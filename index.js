@@ -200,24 +200,94 @@ app.get('/api/software', async (req, res) => {
 
 // API Endpoint to Fetch Software Asset by ID
 app.get('/api/softwareassets/:id', async (req, res) => {
-    const assetId = req.params.id;
+    const softwareId = req.params.id; // Change variable name to reflect softwareid
 
-    if (!assetId) {
-        return res.status(400).json({ message: "Asset ID is required" });
+    if (!softwareId) {
+        return res.status(400).json({ message: "Software ID is required" });
     }
 
-    const query = `SELECT * FROM public."softwareassets" WHERE assetid = $1`;
+    // Update the query to use softwareid instead of assetid
+    const query = `SELECT * FROM public."softwareassets" WHERE softwareid = $1`;
 
     try {
-        const result = await client.query(query, [assetId]);
+        const result = await client.query(query, [softwareId]);
 
         if (result.rows.length === 0) {
-            return res.status(404).json({ message: "Asset not found" });
+            return res.status(404).json({ message: "Software asset not found" });
         }
 
         res.json(result.rows[0]);
     } catch (err) {
-        console.error('Error fetching asset:', err.message);
+        console.error('Error fetching software asset:', err.message);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
+app.post('/api/software', async (req, res) => {
+    const {
+        softwareid,
+        softwarename,
+        softwareversion,
+        purchasedate,
+        licensetype,
+        licenseexpirydate,
+        assigneduserid,
+        assigneddepartment,
+        userstatus,
+        vendor,
+        licensepurchasedate,
+        licensekey,
+        serialnumber,
+        licenseduration,
+        licensecost,
+        username,
+        password,
+        expiredstatus,
+        renewaldate,
+        renewalcost
+    } = req.body;
+
+    // Validate required fields
+    if (!softwareid) {
+        return res.status(400).json({ message: "Software ID is required" });
+    }
+
+    // Check if the softwareid already exists
+    const checkQuery = `SELECT 1 FROM public."softwareassets" WHERE softwareid = $1`;
+    try {
+        const checkResult = await client.query(checkQuery, [softwareid]);
+
+        if (checkResult.rows.length > 0) {
+            return res.status(400).json({ message: "Software ID already exists" });
+        }
+
+        // Insert the new software asset
+        const insertQuery = `
+            INSERT INTO public."softwareassets" (
+                softwareid, softwarename, softwareversion, purchasedate, 
+                licensetype, licenseexpirydate, assigneduserid, assigneddepartment, 
+                userstatus, vendor, licensepurchasedate, licensekey, 
+                serialnumber, licenseduration, licensecost, username, 
+                password, expiredstatus, renewaldate, renewalcost
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            RETURNING *;
+        `;
+
+        const result = await client.query(insertQuery, [
+            softwareid, softwarename, softwareversion, purchasedate, 
+            licensetype, licenseexpirydate, assigneduserid, assigneddepartment, 
+            userstatus, vendor, licensepurchasedate, licensekey, 
+            serialnumber, licenseduration, licensecost, username, 
+            password, expiredstatus, renewaldate, renewalcost
+        ]);
+
+        res.status(201).json({
+            message: "Software asset added successfully!",
+            software: result.rows[0]
+        });
+    } catch (err) {
+        console.error('Error adding software asset:', err.message);
         res.status(500).json({ error: 'Server Error' });
     }
 });
