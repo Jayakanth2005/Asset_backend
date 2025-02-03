@@ -366,6 +366,51 @@ app.post('/api/assets', async (req, res) => {
     }
 });
 
+app.delete("/api/assets/:id", async (req, res) => {
+    const assetId = req.params.id;
+
+    if (!assetId) {
+        return res.status(400).json({ message: "Asset ID is required" });
+    }
+
+    try {
+        console.log(`Attempting to delete asset with ID: ${assetId}`);
+
+        // Check if the asset exists
+        const checkQuery = `SELECT * FROM public."assetmanage" WHERE assetid = $1`;
+        const checkResult = await client.query(checkQuery, [assetId]);
+
+        if (checkResult.rowCount === 0) {
+            console.log("Asset not found in assetmanage table");
+            return res.status(404).json({ message: "Asset not found" });
+        }
+
+        // Delete from maintenance_manage
+        console.log("Deleting from maintenance_manage...");
+        await client.query('DELETE FROM public."maintenance_manage" WHERE assetid = $1', [assetId]);
+
+        // Delete from in_out
+        console.log("Deleting from in_out...");
+        await client.query('DELETE FROM public."in_out" WHERE assetid = $1', [assetId]);
+
+        // Delete from assetmanage
+        console.log("Deleting from assetmanage...");
+        const deleteQuery = `DELETE FROM public."assetmanage" WHERE assetid = $1 RETURNING *`;
+        const deleteResult = await client.query(deleteQuery, [assetId]);
+
+        if (deleteResult.rowCount === 0) {
+            console.log("Asset not found in assetmanage table after deletion attempts");
+            return res.status(404).json({ message: "Asset not found" });
+        }
+
+        console.log("Asset deleted successfully");
+        res.status(200).json({ message: "Asset deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting asset:", error.message);
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+});
+
 // Start the Server
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
