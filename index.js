@@ -130,6 +130,23 @@ app.get('/api/disposal', async (req, res) => {
     }
 });
 
+app.get('/api/employee', async (req, res) => {
+    const query = `SELECT * FROM public."Userdetails";`;
+
+    try {
+        const result = await client.query(query);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "No user records found" });
+        }
+
+        res.json(result.rows);
+    } catch (err) {
+        console.error('SQL Error:', err.message);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 // API Endpoint to Fetch All In/Out Records
 app.get('/api/inout', async (req, res) => {
     const query = `SELECT * FROM public."in_out" ORDER BY assetid;`;
@@ -408,6 +425,98 @@ app.delete("/api/assets/:id", async (req, res) => {
     } catch (error) {
         console.error("Error deleting asset:", error.message);
         res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+});
+
+
+app.put('/api/assets/:id', async (req, res) => {
+    const assetId = req.params.id;
+    const updatedAsset = req.body;
+
+    if (!assetId) {
+        return res.status(400).json({ message: "Asset ID is required" });
+    }
+
+    try {
+        // Get the current asset data
+        const existingAssetQuery = `SELECT * FROM public."assetmanage" WHERE assetid = $1`;
+        const existingAssetResult = await client.query(existingAssetQuery, [assetId]);
+
+        if (existingAssetResult.rows.length === 0) {
+            return res.status(404).json({ message: "Asset not found" });
+        }
+
+        const existingAsset = existingAssetResult.rows[0];
+
+        // Merge existing data with updated data
+        const newAssetData = { ...existingAsset, ...updatedAsset };
+
+        const updateQuery = `
+            UPDATE public."assetmanage"
+            SET 
+                assettype = $1,
+                make = $2,
+                productid = $3,
+                purchasedate = $4,
+                retailer = $5,
+                warrantyexpiry = $6,
+                assigneduserid = $7,
+                location = $8,
+                status = $9,
+                lastcheckoutdate = $10,
+                size = $11,
+                operatingsystem = $12,
+                typeofos = $13,
+                productkey = $14,
+                processor = $15,
+                ram = $16,
+                harddisktype = $17,
+                harddisksize = $18,
+                harddiskmodel = $19,
+                resolution = $20,
+                graphicscardmodel = $21,
+                externaldongledetails = $22
+            WHERE assetid = $23
+            RETURNING *;
+        `;
+
+        const result = await client.query(updateQuery, [
+            newAssetData.assettype,
+            newAssetData.make,
+            newAssetData.productid,
+            newAssetData.purchasedate,
+            newAssetData.retailer,
+            newAssetData.warrantyexpiry,
+            newAssetData.assigneduserid,
+            newAssetData.location,
+            newAssetData.status,
+            newAssetData.lastcheckoutdate,
+            newAssetData.size,
+            newAssetData.operatingsystem,
+            newAssetData.typeofos,
+            newAssetData.productkey,
+            newAssetData.processor,
+            newAssetData.ram,
+            newAssetData.harddisktype,
+            newAssetData.harddisksize,
+            newAssetData.harddiskmodel,
+            newAssetData.resolution,
+            newAssetData.graphicscardmodel,
+            newAssetData.externaldongledetails,
+            assetId
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: "Update failed" });
+        }
+
+        res.json({
+            message: "Asset updated successfully!",
+            asset: result.rows[0]
+        });
+    } catch (err) {
+        console.error("Error updating asset:", err);
+        res.status(500).json({ error: "Server Error" });
     }
 });
 
