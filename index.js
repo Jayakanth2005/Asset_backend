@@ -89,12 +89,23 @@ app.get('/api/assets', async (req, res) => {
             a.purchasedate, 
             a.retailer, 
             a.warrantyexpiry, 
-            u.name AS assigneduser,  -- Fetching username instead of user ID
+            a.assigneduserid, 
             a.location, 
             a.status, 
-            a.lastcheckoutdate 
+            a.lastcheckoutdate,
+            a.size,
+            a.operatingsystem,
+            a.typeofos,
+            a.productkey,
+            a.processor,
+            a.ram,
+            a.harddisktype,
+            a.harddisksize,
+            a.harddiskmodel,
+            a.resolution,
+            a.graphicscardmodel,
+            a.externaldongledetails
         FROM public."assetmanage" a
-        LEFT JOIN public."Userdetails" u ON a.assigneduserid = u.userid
         ORDER BY a.assetid;
     `;
 
@@ -261,7 +272,8 @@ app.post('/api/software', async (req, res) => {
         password,
         expiredstatus,
         renewaldate,
-        renewalcost
+        renewalcost,
+        comments
     } = req.body;
 
     // Validate required fields
@@ -309,8 +321,40 @@ app.post('/api/software', async (req, res) => {
     }
 });
 
+//delete of the software assets
+app.delete('/api/software/:id', async (req, res) => {
+    const softwareId = req.params.id; // Extract software ID from the URL
+
+    if (!softwareId) {
+        return res.status(400).json({ message: "Software ID is required" });
+    }
+
+    try {
+        // Check if the software asset exists
+        const checkQuery = `SELECT 1 FROM public."softwareassets" WHERE softwareid = $1`;
+        const checkResult = await client.query(checkQuery, [softwareId]);
+
+        if (checkResult.rows.length === 0) {
+            return res.status(404).json({ message: "Software asset not found" });
+        }
+
+        // Delete the software asset
+        const deleteQuery = `DELETE FROM public."softwareassets" WHERE softwareid = $1 RETURNING *`;
+        const deleteResult = await client.query(deleteQuery, [softwareId]);
+
+        res.status(200).json({
+            message: "Software asset deleted successfully!",
+            software: deleteResult.rows[0], // Return the deleted record
+        });
+    } catch (err) {
+        console.error('Error deleting software asset:', err.message);
+        res.status(500).json({ error: 'Server Error' });
+    }
+});
+
 // API Endpoint to Add a New Asset
 app.post('/api/assets', async (req, res) => {
+    console.log("Received data:", req.body); 
     const {
         assetid,
         assettype,
@@ -350,6 +394,11 @@ app.post('/api/assets', async (req, res) => {
             return res.status(400).json({ message: "Asset ID already exists" });
         }
 
+        const formattedPurchasedate = purchasedate === "" ? null : purchasedate;
+        const formattedWarrantyexpiry = warrantyexpiry === "" ? null : warrantyexpiry;
+        const formattedLastcheckoutdate = lastcheckoutdate === "" ? null : lastcheckoutdate;
+        const formattedAssigneduserid = assigneduserid === "" ? null : assigneduserid;
+
         // Insert the new asset
         const insertQuery = `
             INSERT INTO public."assetmanage" (
@@ -360,14 +409,14 @@ app.post('/api/assets', async (req, res) => {
                 harddisksize, harddiskmodel, resolution, 
                 graphicscardmodel, externaldongledetails
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
             RETURNING *;
         `;
 
         const result = await client.query(insertQuery, [
-            assetid, assettype, make, productid, purchasedate, 
-            retailer, warrantyexpiry, assigneduserid, location, 
-            status, lastcheckoutdate, size, operatingsystem, 
+            assetid, assettype, make, productid, formattedPurchasedate, 
+            retailer, formattedWarrantyexpiry, formattedAssigneduserid, location, 
+            status, formattedLastcheckoutdate, size, operatingsystem, 
             typeofos, productkey, processor, ram, harddisktype, 
             harddisksize, harddiskmodel, resolution, 
             graphicscardmodel, externaldongledetails
