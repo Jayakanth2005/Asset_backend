@@ -104,7 +104,8 @@ app.get('/api/assets', async (req, res) => {
             a.harddiskmodel,
             a.resolution,
             a.graphicscardmodel,
-            a.externaldongledetails
+            a.externaldongledetails,
+            a.check_in
         FROM public."assetmanage" a
         ORDER BY a.assetid;
     `;
@@ -207,7 +208,19 @@ app.get('/api/software', async (req, res) => {
             a.licenseexpirydate,
             a.assigneduserid,
             a.project,
-            a.userstatus
+            a.userstatus,
+            a.vendor,
+            a.licensepurchasedate,
+            a.licensekey,
+            a.serialnumber,
+            a.licenseduration,
+            a.licensecost,
+            a.username,
+            a.password,
+            a.expiredstatus,
+            a.renewaldate,
+            a.renewalcost,
+            a.comments
         FROM public."softwareassets" a
         ORDER BY a.softwareid;
     `;
@@ -257,10 +270,11 @@ app.post('/api/software', async (req, res) => {
         softwarename,
         softwareversion,
         purchasedate,
+        assetid,
         licensetype,
         licenseexpirydate,
         assigneduserid,
-        assigneddepartment,
+        project,
         userstatus,
         vendor,
         licensepurchasedate,
@@ -293,22 +307,22 @@ app.post('/api/software', async (req, res) => {
         // Insert the new software asset
         const insertQuery = `
             INSERT INTO public."softwareassets" (
-                softwareid, softwarename, softwareversion, purchasedate, 
-                licensetype, licenseexpirydate, assigneduserid, assigneddepartment, 
+                softwareid, softwarename, softwareversion, purchasedate, assetid,
+                licensetype, licenseexpirydate, assigneduserid, project, 
                 userstatus, vendor, licensepurchasedate, licensekey, 
                 serialnumber, licenseduration, licensecost, username, 
-                password, expiredstatus, renewaldate, renewalcost
+                password, expiredstatus, renewaldate, renewalcost, comments
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
             RETURNING *;
         `;
 
         const result = await client.query(insertQuery, [
-            softwareid, softwarename, softwareversion, purchasedate, 
-            licensetype, licenseexpirydate, assigneduserid, assigneddepartment, 
+            softwareid, softwarename, softwareversion, purchasedate, assetid, 
+            licensetype, licenseexpirydate, assigneduserid, project, 
             userstatus, vendor, licensepurchasedate, licensekey, 
             serialnumber, licenseduration, licensecost, username, 
-            password, expiredstatus, renewaldate, renewalcost
+            password, expiredstatus, renewaldate, renewalcost, comments
         ]);
 
         res.status(201).json({
@@ -378,7 +392,8 @@ app.post('/api/assets', async (req, res) => {
         harddiskmodel,
         resolution,
         graphicscardmodel,
-        externaldongledetails
+        externaldongledetails,
+        check_in
     } = req.body;
 
     if (!assetid) {
@@ -398,6 +413,8 @@ app.post('/api/assets', async (req, res) => {
         const formattedWarrantyexpiry = warrantyexpiry === "" ? null : warrantyexpiry;
         const formattedLastcheckoutdate = lastcheckoutdate === "" ? null : lastcheckoutdate;
         const formattedAssigneduserid = assigneduserid === "" ? null : assigneduserid;
+        const finalStatus = formattedAssigneduserid ? status : "inStock";
+        const formattedCheckin = check_in === "" ? null : check_in;
 
         // Insert the new asset
         const insertQuery = `
@@ -407,19 +424,19 @@ app.post('/api/assets', async (req, res) => {
                 status, lastcheckoutdate, size, operatingsystem, 
                 typeofos, productkey, processor, ram, harddisktype, 
                 harddisksize, harddiskmodel, resolution, 
-                graphicscardmodel, externaldongledetails
+                graphicscardmodel, externaldongledetails,check_in
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
             RETURNING *;
         `;
 
         const result = await client.query(insertQuery, [
             assetid, assettype, make, productid, formattedPurchasedate, 
             retailer, formattedWarrantyexpiry, formattedAssigneduserid, location, 
-            status, formattedLastcheckoutdate, size, operatingsystem, 
+            finalStatus, formattedLastcheckoutdate, size, operatingsystem, 
             typeofos, productkey, processor, ram, harddisktype, 
             harddisksize, harddiskmodel, resolution, 
-            graphicscardmodel, externaldongledetails
+            graphicscardmodel, externaldongledetails,formattedCheckin
         ]);
 
         res.status(201).json({
@@ -460,19 +477,20 @@ app.delete("/api/assets/:id", async (req, res) => {
         await client.query('DELETE FROM public."in_out" WHERE assetid = $1', [assetId]);
 
         // Delete from assetmanage
-        console.log("Deleting from assetmanage...");
-        const deleteQuery = `DELETE FROM public."assetmanage" WHERE assetid = $1 RETURNING *`;
-        const deleteResult = await client.query(deleteQuery, [assetId]);
+        console.log("Updating asset status to 'disposed'...");
+        const updateQuery = `UPDATE public."assetmanage" SET status = 'disposed' WHERE assetid = $1 RETURNING *`;
+        const updateResult = await client.query(updateQuery, [assetId]);
 
-        if (deleteResult.rowCount === 0) {
-            console.log("Asset not found in assetmanage table after deletion attempts");
-            return res.status(404).json({ message: "Asset not found" });
+        if (updateResult.rowCount === 0) {
+            console.log("Failed to update asset status");
+            return res.status(500).json({ message: "Failed to update asset status" });
         }
 
-        console.log("Asset deleted successfully");
-        res.status(200).json({ message: "Asset deleted successfully" });
-    } catch (error) {
-        console.error("Error deleting asset:", error.message);
+        console.log("Asset status updated to 'disposed' successfully");
+        res.status(200).json({ message: "Asset status updated to 'disposed' successfully" });
+    }
+     catch (error) {
+        console.error("Error updating asset:", error.message);
         res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 });
@@ -500,6 +518,15 @@ app.put('/api/assets/:id', async (req, res) => {
         // Merge existing data with updated data
         const newAssetData = { ...existingAsset, ...updatedAsset };
 
+        const oldAssignedUserId = existingAsset.assigneduserid;
+        const formattedAssigneduserid = newAssetData.assigneduserid || null;
+
+        // Determine final status
+        let finalStatus = newAssetData.status;
+        if (oldAssignedUserId && !formattedAssigneduserid) {
+            finalStatus = "Unassigned";
+        }
+
         const updateQuery = `
             UPDATE public."assetmanage"
             SET 
@@ -524,8 +551,9 @@ app.put('/api/assets/:id', async (req, res) => {
                 harddiskmodel = $19,
                 resolution = $20,
                 graphicscardmodel = $21,
-                externaldongledetails = $22
-            WHERE assetid = $23
+                externaldongledetails = $22,
+                check_in = $23
+            WHERE assetid = $24
             RETURNING *;
         `;
 
@@ -536,9 +564,9 @@ app.put('/api/assets/:id', async (req, res) => {
             newAssetData.purchasedate,
             newAssetData.retailer,
             newAssetData.warrantyexpiry,
-            newAssetData.assigneduserid,
+            formattedAssigneduserid,
             newAssetData.location,
-            newAssetData.status,
+            finalStatus,
             newAssetData.lastcheckoutdate,
             newAssetData.size,
             newAssetData.operatingsystem,
@@ -552,6 +580,7 @@ app.put('/api/assets/:id', async (req, res) => {
             newAssetData.resolution,
             newAssetData.graphicscardmodel,
             newAssetData.externaldongledetails,
+            newAssetData.check_in,
             assetId
         ]);
 
@@ -561,7 +590,7 @@ app.put('/api/assets/:id', async (req, res) => {
 
         res.json({
             message: "Asset updated successfully!",
-            asset: result.rows[0]
+            asset: result.rows[0] 
         });
     } catch (err) {
         console.error("Error updating asset:", err);
@@ -569,6 +598,35 @@ app.put('/api/assets/:id', async (req, res) => {
     }
 });
 
+
+app.post("/api/disposal", async (req, res) => {
+    const { assetid, repaired_on, disposaldate, reason } = req.body;
+  
+    if (!assetid || !repaired_on || !disposaldate || !reason) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+  
+    try {
+      // Insert into the disposal table
+      const query = `
+        INSERT INTO public."disposal" (assetid, repaired_on, disposaldate, reason)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *;
+      `;
+      const result = await client.query(query, [assetid, repaired_on, disposaldate, reason]);
+  
+      if (result.rowCount === 0) {
+        return res.status(500).json({ message: "Failed to insert disposal record" });
+      }
+  
+      console.log("Disposal record inserted successfully");
+      res.status(200).json({ message: "Disposal record added successfully" });
+    } catch (error) {
+      console.error("Error inserting disposal record:", error.message);
+      res.status(500).json({ message: "Internal Server Error", error: error.message });
+    }
+  });
+  
 // Start the Server
 app.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
